@@ -1,29 +1,27 @@
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import { GenerativeModel, GoogleGenerativeAI } from "@google/generative-ai";
 
-const API_KEY = process.env.GEMINI_API_KEY;
+import { TranscriptItem } from "@/types";
+
+const API_KEY = process.env.GEMINI_API_KEY || "";
 
 // Initialize Gemini
-const genAI = new GoogleGenerativeAI(API_KEY!);
-const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
+let genAI: GoogleGenerativeAI;
+let model: GenerativeModel;
 
-// Define transcript type
-type TranscriptEntry = {
-  text: string;
-  start: number;
-  duration: number;
-};
-
-// Define key moment type
-type KeyMoment = {
-  startTime: number;
-  endTime?: number;
-  text: string;
-  importance: string;
-};
+try {
+  genAI = new GoogleGenerativeAI(API_KEY);
+  model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
+} catch (error) {
+  console.error("Failed to initialize Gemini:", error);
+}
 
 export async function summarizeTranscript(
-  transcript: TranscriptEntry[]
+  transcript: TranscriptItem[]
 ): Promise<string> {
+  if (!model) {
+    throw new Error("Gemini model not initialized");
+  }
+
   const fullText = transcript.map((item) => item.text).join(" ");
 
   const prompt = `
@@ -42,61 +40,27 @@ export async function summarizeTranscript(
   }
 }
 
-export async function identifyKeyMoments(
-  transcript: TranscriptEntry[]
-): Promise<KeyMoment[]> {
-  const fullText = transcript
-    .map((item) => `[${item.start}] ${item.text}`)
-    .join("\n");
+export async function pruneScript(
+  transcript: TranscriptItem[]
+): Promise<number[]> {
+  if (!model) throw new Error("Gemini model not initialized");
 
   const prompt = `
-    Below is a timestamped transcript from a YouTube video. Please identify the 5-7 most important segments that capture the key points, insights or valuable information. 
-    
-    For each segment, provide:
-    1. The start time in seconds
-    2. A brief description of why this segment is important
-    3. The text of the segment
-    
-    Format your response as JSON array like this:
-    [
-      {
-        "startTime": 120,
-        "endTime": 145, 
-        "text": "Brief description of this key moment",
-        "importance": "Why this segment is important"
-      }
-    ]
-    
+    AGGRESSIVELY reduce this transcript to only the ABSOLUTELY ESSENTIAL lines while maintaining proper sentence structure and meaning.
+    The goal is to create a concise summary of the content, while still preserving the overall context and flow of the conversation.
+    Return ONLY a JSON array of line indices to KEEP, like [0, 15, 30].
+    NO explanations, just numbers.
+
     Transcript:
-    ${fullText}
+    ${transcript.map((item, i) => `[${i}] ${item.text}`).join("\n")}
   `;
 
   try {
     const result = await model.generateContent(prompt);
-    const response = await result.response;
-
-    // Extract the JSON from the response
-    const responseText = response.text();
-    const jsonMatch = responseText.match(/\[\s*\{[\s\S]*\}\s*\]/);
-
-    if (!jsonMatch) {
-      throw new Error("Failed to parse key moments from Gemini response");
-    }
-
-    const keyMoments: KeyMoment[] = JSON.parse(jsonMatch[0]);
-
-    // Ensure proper formatting and find end times
-    return keyMoments.map((moment, index, array): KeyMoment => {
-      if (!moment.endTime) {
-        moment.endTime =
-          index < array.length - 1
-            ? array[index + 1].startTime
-            : moment.startTime + 30;
-      }
-      return moment;
-    });
-  } catch (error) {
-    console.error("Error in Gemini key moments identification:", error);
-    throw new Error("Failed to identify key moments");
+    const response = result.response.text().trim();
+    const indices = JSON.parse(response.match(/\[[\d,\s]*\]/)?.[0] || "[]");
+    return indices;
+  } catch {
+    return [];
   }
 }

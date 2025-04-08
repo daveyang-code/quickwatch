@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { identifyKeyMoments, summarizeTranscript } from "@/lib/gemini";
+import { pruneScript, summarizeTranscript } from "@/lib/gemini";
 
 import { getTranscript } from "@/lib/youtube";
 
-export const POST = async (request: NextRequest) => {
+export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     const { videoId } = body;
@@ -27,7 +27,7 @@ export const POST = async (request: NextRequest) => {
 
     // Process with Gemini
     const summary = await summarizeTranscript(transcript);
-    const keyMoments = await identifyKeyMoments(transcript);
+    const keyMoments = await pruneScript(transcript);
 
     return NextResponse.json({
       transcript,
@@ -44,4 +44,4 @@ export const POST = async (request: NextRequest) => {
       { status: 500 }
     );
   }
-};
+}

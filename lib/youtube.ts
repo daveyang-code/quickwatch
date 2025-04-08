@@ -1,12 +1,15 @@
+import { TranscriptItem } from "@/types";
 import { YoutubeTranscript } from "youtube-transcript";
 
-export async function getTranscript(videoId: string) {
+export async function getTranscript(
+  videoId: string
+): Promise<TranscriptItem[]> {
   try {
     const transcript = await YoutubeTranscript.fetchTranscript(videoId);
     return transcript.map((item) => ({
       text: item.text,
-      start: item.offset / 1000, // Convert to seconds
-      duration: item.duration / 1000,
+      start: item.offset,
+      duration: item.duration,
     }));
   } catch (error) {
     console.error("Error fetching transcript:", error);

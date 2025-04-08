@@ -6,9 +6,8 @@ import type { Metadata } from "next";
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "QuickWatch",
-  description:
-    "Watch YouTube videos faster with AI-generated summaries and key moments.",
+  title: "Quick Watch",
+  description: "Watch YouTube videos without the fluff.",
 };
 
 export default function RootLayout({

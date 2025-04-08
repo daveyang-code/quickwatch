@@ -17,13 +17,15 @@ export default function SummaryCard({ summary }: SummaryCardProps) {
       </CardHeader>
       <CardContent>
         <p className="text-slate-700 dark:text-slate-300 leading-relaxed">
-          {summary
+            {summary
             .split(" ")
             .map((word, index) =>
               word.startsWith("**") && word.endsWith("**") ? (
-                <strong key={index}>{word.slice(2, -2)}</strong>
+              <strong key={index}>{word.slice(2, -2)}</strong>
+              ) : word.startsWith("*") && word.endsWith("*") ? (
+              <em key={index}>{word.slice(1, -1)}</em>
               ) : (
-                `${word} `
+              `${word} `
               )
             )}
         </p>

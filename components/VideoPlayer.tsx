@@ -1,187 +1,199 @@
 "use client";
 
 import { Card, CardContent } from "@/components/ui/card";
-import { FastForward, SkipForward, Square } from "lucide-react";
+import { FastForward, Pause, Play } from "lucide-react";
+import YouTube, { YouTubePlayer, YouTubeProps } from "react-youtube";
 import { useEffect, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
-import { KeyMoment } from "@/types";
-import YouTube from "react-youtube";
 
 interface VideoPlayerProps {
   videoId: string;
-  keyMoments: KeyMoment[];
-}
-
-interface YouTubePlayer {
-  seekTo: (seconds: number, allowSeekAhead?: boolean) => void;
-  playVideo: () => void;
-  pauseVideo: () => void;
-  getDuration: () => number;
-  getCurrentTime: () => number;
-  getPlayerState: () => number;
+  sections: Array<{ start: number; duration: number }>;
 }
 
 declare global {
   interface Window {
     ytPlayer?: YouTubePlayer;
     playKeyMoments?: () => void;
-    skipToNextKeyMoment?: () => void;
-    stopKeyMoments?: () => void;
   }
 }
 
-export default function VideoPlayer({ videoId, keyMoments }: VideoPlayerProps) {
+export default function VideoPlayer({ videoId, sections }: VideoPlayerProps) {
   const playerRef = useRef<YouTubePlayer | null>(null);
-  const [isPlaying, setIsPlaying] = useState<boolean>(false);
-  const [currentKeyMomentIndex, setCurrentKeyMomentIndex] =
-    useState<number>(-1);
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const progressCheckIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [currentSectionIndex, setCurrentSectionIndex] = useState<number>(-1);
+  const [remainingTime, setRemainingTime] = useState<number>(0);
 
-  // YouTube player states
-  const YT_PLAYING = 1;
-
-  const onReady = (event: { target: YouTubePlayer }) => {
+  const onReady: YouTubeProps["onReady"] = (event) => {
     playerRef.current = event.target;
-    // Make the player accessible globally
     if (typeof window !== "undefined") {
       window.ytPlayer = event.target;
     }
-
-    // Start monitoring player position to keep currentKeyMomentIndex updated
-    startProgressTracking();
   };
 
-  const stopPlayback = () => {
+  const cleanup = () => {
     if (timeoutRef.current) {
       clearTimeout(timeoutRef.current);
       timeoutRef.current = null;
     }
+  };
+
+  const pausePlayback = () => {
+    if (!playerRef.current || currentSectionIndex < 0) return;
+
+    cleanup();
+
+    const currentTime = playerRef.current.getCurrentTime();
+    const currentSection = sections[currentSectionIndex];
+    if (!currentSection) return;
+
+    const endTime = calculateSectionEndTime(currentSectionIndex);
+    setRemainingTime(Math.max(0, endTime - currentTime) * 1000);
+    playerRef.current.pauseVideo();
     setIsPlaying(false);
   };
 
-  // Start monitoring player position to update currentKeyMomentIndex
-  const startProgressTracking = () => {
-    // Clear any existing interval first
-    if (progressCheckIntervalRef.current) {
-      clearInterval(progressCheckIntervalRef.current);
+  const calculateSectionEndTime = (index: number): number => {
+    if (index < 0 || index >= sections.length) return 0;
+
+    const currentSection = sections[index];
+    if (!currentSection) return 0;
+
+    if (index < sections.length - 1) {
+      const nextSection = sections[index + 1];
+      return Math.min(
+        currentSection.start + currentSection.duration,
+        nextSection.start
+      );
     }
-
-    // Check position every 500ms to update the current index
-    progressCheckIntervalRef.current = setInterval(() => {
-      if (!playerRef.current || keyMoments.length === 0) return;
-
-      const currentTime = playerRef.current.getCurrentTime();
-
-      // Find the current moment based on position
-      let newIndex = -1;
-      for (let i = keyMoments.length - 1; i >= 0; i--) {
-        if (currentTime >= keyMoments[i].startTime) {
-          newIndex = i;
-          break;
-        }
-      }
-
-      if (newIndex !== currentKeyMomentIndex) {
-        setCurrentKeyMomentIndex(newIndex);
-      }
-    }, 500);
+    return currentSection.start + currentSection.duration;
   };
 
-  // Clear intervals and timeouts when the component unmounts
-  useEffect(() => {
-    return () => {
-      stopPlayback();
-      if (progressCheckIntervalRef.current) {
-        clearInterval(progressCheckIntervalRef.current);
-      }
-    };
-  }, []);
+  const resumePlayback = () => {
+    if (!playerRef.current || currentSectionIndex < 0) return;
 
-  const skipToNextKeyMoment = () => {
-    if (!playerRef.current || keyMoments.length === 0) return;
-
-    const currentTime = playerRef.current.getCurrentTime();
-    let nextIndex = keyMoments.findIndex(
-      (moment) => moment.startTime > currentTime
-    );
-
-    if (nextIndex === -1) nextIndex = 0; // Loop back to start
-
-    setCurrentKeyMomentIndex(nextIndex);
-    playerRef.current.seekTo(keyMoments[nextIndex].startTime, true);
     playerRef.current.playVideo();
+    setIsPlaying(true);
+
+    cleanup();
+
+    timeoutRef.current = setTimeout(() => {
+      const nextIndex = currentSectionIndex + 1;
+      if (nextIndex < sections.length) {
+        playSection(nextIndex);
+      } else {
+        stopPlayback();
+      }
+    }, remainingTime);
+  };
+
+  const stopPlayback = () => {
+    playerRef.current?.pauseVideo();
+    setIsPlaying(false);
+    setCurrentSectionIndex(-1);
+    cleanup();
+  };
+
+  const playSection = (index: number) => {
+    if (!playerRef.current || index >= sections.length) {
+      stopPlayback();
+      return;
+    }
+
+    cleanup();
+
+    const section = sections[index];
+    if (
+      !section ||
+      typeof section.start !== "number" ||
+      typeof section.duration !== "number"
+    ) {
+      console.error("Invalid section format at index", index, section);
+      playSection(index + 1);
+      return;
+    }
+
+    setCurrentSectionIndex(index);
+    playerRef.current.seekTo(section.start, true);
+    playerRef.current.playVideo();
+    setIsPlaying(true);
+
+    const endTime = calculateSectionEndTime(index);
+    const playbackTime = (endTime - section.start) * 1000;
+    setRemainingTime(playbackTime);
+
+    timeoutRef.current = setTimeout(() => {
+      const nextIndex = index + 1;
+      if (nextIndex < sections.length) {
+        playSection(nextIndex);
+      } else {
+        stopPlayback();
+      }
+    }, playbackTime);
   };
 
   const playKeyMoments = () => {
-    if (!playerRef.current || keyMoments.length === 0 || isPlaying) return;
+    if (!playerRef.current) return;
 
-    // Stop any existing playback first
-    stopPlayback();
-    setIsPlaying(true);
-
-    const playSegment = (index: number) => {
-      if (!playerRef.current || index >= keyMoments.length) {
-        setIsPlaying(false);
-        return;
-      }
-
-      setCurrentKeyMomentIndex(index);
-      const moment = keyMoments[index];
-      playerRef.current.seekTo(moment.startTime, true);
-      playerRef.current.playVideo();
-
-      // Calculate segment duration
-      const segmentDuration = moment.endTime
-        ? moment.endTime - moment.startTime
-        : Math.min(60, playerRef.current.getDuration() - moment.startTime);
-
-      // Clear any existing timeout before setting a new one
-      if (timeoutRef.current) {
-        clearTimeout(timeoutRef.current);
-      }
-
-      timeoutRef.current = setTimeout(() => {
-        // Check if video is still playing before moving to next segment
-        if (
-          playerRef.current &&
-          playerRef.current.getPlayerState() === YT_PLAYING
-        ) {
-          playSegment(index + 1);
-        } else {
-          // If video was paused by the user, stop the auto-playback sequence
-          stopPlayback();
-        }
-      }, segmentDuration * 1000);
-    };
-
-    playSegment(0);
-  };
-
-  // Make methods available globally
-  useEffect(() => {
-    if (typeof window !== "undefined") {
-      window.playKeyMoments = playKeyMoments;
-      window.skipToNextKeyMoment = skipToNextKeyMoment;
-      window.stopKeyMoments = stopPlayback;
+    if (isPlaying) {
+      pausePlayback();
+      return;
     }
 
+    if (currentSectionIndex >= 0) {
+      resumePlayback();
+      return;
+    }
+
+    if (sections.length > 0) {
+      playSection(0);
+    }
+  };
+
+  useEffect(() => {
     return () => {
-      if (typeof window !== "undefined") {
-        delete window.playKeyMoments;
-        delete window.skipToNextKeyMoment;
-        delete window.stopKeyMoments;
-      }
+      cleanup();
     };
-  }, [keyMoments, isPlaying]); // Add isPlaying to deps to ensure global methods use current state
+  }, []);
+
+  const getButtonContent = () => {
+    if (isPlaying) {
+      return (
+        <>
+          <Pause className="mr-2 h-4 w-4" />
+          Pause
+        </>
+      );
+    }
+    if (currentSectionIndex >= 0) {
+      return (
+        <>
+          <Play className="mr-2 h-4 w-4" />
+          Resume
+        </>
+      );
+    }
+    return (
+      <>
+        <FastForward className="mr-2 h-4 w-4" />
+        Quick Watch
+      </>
+    );
+  };
+
+  const getButtonVariant = () => {
+    if (isPlaying) return "bg-yellow-600 hover:bg-yellow-700";
+    if (currentSectionIndex >= 0) return "bg-green-600 hover:bg-green-700";
+    return "bg-red-600 hover:bg-red-700";
+  };
 
   return (
-    <Card className="overflow-hidden border-slate-200 dark:border-slate-800 mb-6">
+    <Card className="overflow-hidden border-slate-200 mb-6">
       <div className="aspect-video bg-black">
         <YouTube
           videoId={videoId}
-          id="video-player"
           opts={{
             height: "100%",
             width: "100%",
@@ -197,29 +209,15 @@ export default function VideoPlayer({ videoId, keyMoments }: VideoPlayerProps) {
         />
       </div>
 
-      {keyMoments.length > 0 && (
-        <CardContent className="px-4 py-3 bg-slate-50 dark:bg-slate-900 flex justify-between">
-          <Button onClick={skipToNextKeyMoment} variant="outline" size="sm">
-            <SkipForward className="mr-2 h-4 w-4" />
-            Next Key Moment
+      {sections.length > 0 && (
+        <CardContent className="px-4 py-3 flex justify-end">
+          <Button
+            onClick={playKeyMoments}
+            className={getButtonVariant()}
+            size="sm"
+          >
+            {getButtonContent()}
           </Button>
-          <div>
-            {isPlaying ? (
-              <Button onClick={stopPlayback} variant="outline" size="sm">
-                <Square className="mr-2 h-4 w-4" />
-                Stop
-              </Button>
-            ) : (
-              <Button
-                onClick={playKeyMoments}
-                className="bg-red-600 hover:bg-red-700"
-                size="sm"
-              >
-                <FastForward className="mr-2 h-4 w-4" />
-                Play All Key Moments
-              </Button>
-            )}
-          </div>
         </CardContent>
       )}
     </Card>
