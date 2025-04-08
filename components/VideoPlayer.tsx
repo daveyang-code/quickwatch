@@ -1,7 +1,7 @@
 "use client";
 
 import { Card, CardContent } from "@/components/ui/card";
-import { FastForward, SkipForward, Square } from "lucide-react";
+import { FastForward, Square } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -198,11 +198,11 @@ export default function VideoPlayer({ videoId, keyMoments }: VideoPlayerProps) {
       </div>
 
       {keyMoments.length > 0 && (
-        <CardContent className="px-4 py-3 bg-slate-50 dark:bg-slate-900 flex justify-between">
-          <Button onClick={skipToNextKeyMoment} variant="outline" size="sm">
+        <CardContent className="px-4 py-3 flex justify-end">
+          {/* <Button onClick={skipToNextKeyMoment} variant="outline" size="sm">
             <SkipForward className="mr-2 h-4 w-4" />
             Next Key Moment
-          </Button>
+          </Button> */}
           <div>
             {isPlaying ? (
               <Button onClick={stopPlayback} variant="outline" size="sm">
@@ -216,7 +216,7 @@ export default function VideoPlayer({ videoId, keyMoments }: VideoPlayerProps) {
                 size="sm"
               >
                 <FastForward className="mr-2 h-4 w-4" />
-                Play All Key Moments
+                Quick Watch
               </Button>
             )}
           </div>

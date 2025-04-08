@@ -53,7 +53,7 @@ export default function Home() {
     <div className="min-h-screen bg-slate-50 dark:bg-slate-900">
       <div className="container mx-auto py-10 px-4 max-w-7xl">
         <h1 className="text-4xl font-bold text-center mb-6 text-slate-900 dark:text-white">
-          QuickWatch
+          Quick Watch
         </h1>
 
         <VideoForm onSubmit={handleSubmit} isLoading={isLoading} />
